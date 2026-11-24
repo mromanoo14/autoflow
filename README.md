@@ -66,6 +66,9 @@ docker compose ps                   # tudo "running"; o seed termina com "exited
 
 Para derrubar tudo: `docker compose down` (use `-v` para apagar o banco também).
 
+> **Windows:** rode os comandos com `curl` e `grep` deste README no **Git Bash** (no VS Code:
+> Terminal → seta ao lado do + → Git Bash). No PowerShell o `grep` não existe e o `curl` é outro programa.
+
 ---
 
 ## 3. Roteiro de demonstração, etapa por etapa
@@ -93,9 +96,10 @@ Para derrubar tudo: `docker compose down` (use `-v` para apagar o banco também)
   ```
   No Grafana (painel "Queries SQL por requisição"), rode o Locust com N+1 e depois sem:
   ```bash
-  docker compose run --rm -e MODO_CONSULTA=n1 -p 8089:8089 locust -f /mnt/locust/locustfile.py --host http://gateway:8000
+  docker compose run --rm -e MODO_CONSULTA=n1 locust -f /mnt/locust/locustfile.py --headless -u 50 -r 10 -t 10m --host http://gateway:8000
   ```
-  Em seguida, pare e rode de novo sem `-e MODO_CONSULTA=n1`. A linha cai de cerca de 51 para 1.
+  Em seguida, pare (Ctrl+C) e rode de novo sem `-e MODO_CONSULTA=n1`. A linha cai de cerca de 51 para 1.
+  (Os comandos `--headless` não usam a porta 8089, então não conflitam com o Locust da interface web.)
 - **Batching**: o gateway busca o resumo de propostas (interessados e maior oferta)
   de todos os veículos da página em **uma** chamada (`/propostas/resumo?ids=...`),
   em vez de fazer N chamadas HTTP.

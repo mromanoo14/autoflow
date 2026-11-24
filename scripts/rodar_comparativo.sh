@@ -10,4 +10,9 @@ for alvo in "baseline http://monolito:8001" "otimizado http://gateway:8000"; do
     --csv "/mnt/resultados/$1" --html "/mnt/resultados/$1.html"
   sleep 20
 done
-python3 scripts/comparar_resultados.py resultados/baseline resultados/otimizado
+PY=$(command -v python3 || command -v python || true)
+if [ -n "$PY" ]; then
+  "$PY" scripts/comparar_resultados.py resultados/baseline resultados/otimizado
+else
+  echo "Python não encontrado: veja os números em resultados/baseline.html e resultados/otimizado.html"
+fi
