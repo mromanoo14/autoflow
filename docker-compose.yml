@@ -1,0 +1,130 @@
+# AutoFlow - Engenharia de Performance, Escala e Resiliência
+# Sobe tudo:   docker compose up -d --build
+# Portas:      monolito 8001 | gateway 8000 | propostas 5002 | nginx 8080
+#              prometheus 9090 | grafana 3000 | locust 8089
+
+x-servico: &servico
+  build: .
+  restart: unless-stopped
+  environment: &env
+    DATABASE_URL: postgresql://loja:loja@postgres:5432/loja
+  depends_on:
+    seed:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: loja
+      POSTGRES_PASSWORD: loja
+      POSTGRES_DB: loja
+    command: ["postgres", "-c", "max_connections=300"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loja"]
+      interval: 3s
+      retries: 20
+
+  seed:
+    build: .
+    command: ["python", "-m", "comum.seed"]
+    environment:
+      DATABASE_URL: postgresql://loja:loja@postgres:5432/loja
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------- BASELINE
+  monolito:
+    <<: *servico
+    # Servidor de DESENVOLVIMENTO do Flask (app.run) - de propósito
+    command: ["python", "-m", "servicos.monolito.app"]
+    environment:
+      <<: *env
+      SERVICO: monolito
+      INSTANCIA: monolito
+      PORTA: "8001"
+    ports: ["8001:8001"]
+
+  # ---------------------------------------------------------- MICROSSERVIÇOS
+  estoque-1:
+    <<: *servico
+    command: ["gunicorn", "-k", "gthread", "-w", "1", "--threads", "16",
+              "-b", "0.0.0.0:5001", "servicos.estoque.app:app"]
+    environment:
+      <<: *env
+      SERVICO: estoque
+      INSTANCIA: estoque-1
+      MODO_CONSULTA: join
+      DB_POOL: "16"
+
+  estoque-2:
+    <<: *servico
+    command: ["gunicorn", "-k", "gthread", "-w", "1", "--threads", "16",
+              "-b", "0.0.0.0:5001", "servicos.estoque.app:app"]
+    environment:
+      <<: *env
+      SERVICO: estoque
+      INSTANCIA: estoque-2
+      MODO_CONSULTA: join
+      DB_POOL: "16"
+
+  propostas:
+    <<: *servico
+    command: ["gunicorn", "-k", "gthread", "-w", "1", "--threads", "16",
+              "-b", "0.0.0.0:5002", "servicos.propostas.app:app"]
+    environment:
+      <<: *env
+      SERVICO: propostas
+      INSTANCIA: propostas
+      DB_POOL: "16"
+    ports: ["5002:5002"]   # exposto para ativar o caos pelo navegador/curl
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [estoque-1, estoque-2]
+    ports: ["8080:80"]
+
+  gateway:
+    <<: *servico
+    command: ["gunicorn", "-k", "gthread", "-w", "1", "--threads", "64",
+              "-b", "0.0.0.0:8000", "servicos.gateway.app:app"]
+    environment:
+      SERVICO: gateway
+      INSTANCIA: gateway
+      ESTOQUE_URL: http://nginx:80
+      PROPOSTAS_URL: http://propostas:5002
+    depends_on: [nginx, propostas]
+    ports: ["8000:8000"]
+
+  # ---------------------------------------------------------- OBSERVABILIDADE
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [prometheus]
+    ports: ["3000:3000"]
+
+  # ---------------------------------------------------------- TESTE DE CARGA
+  locust:
+    image: locustio/locust:2.29.1
+    volumes:
+      - ./locust:/mnt/locust
+      - ./resultados:/mnt/resultados
+    command: ["-f", "/mnt/locust/locustfile.py", "--host", "http://gateway:8000"]
+    ports: ["8089:8089"]
+    depends_on: [gateway, monolito]

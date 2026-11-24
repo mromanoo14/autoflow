@@ -1,0 +1,25 @@
+# Prometheus usa o modelo PULL: a cada 5s ele "raspa" o /metrics de cada serviço.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: monolito
+    static_configs:
+      - targets: ["monolito:8001"]
+
+  - job_name: gateway
+    static_configs:
+      - targets: ["gateway:8000"]
+
+  - job_name: estoque          # 2 réplicas -> 2 alvos
+    static_configs:
+      - targets: ["estoque-1:5001", "estoque-2:5001"]
+
+  - job_name: propostas
+    static_configs:
+      - targets: ["propostas:5002"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

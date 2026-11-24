@@ -1,0 +1,7 @@
+resultados/
+docs/
+grafana/
+prometheus/
+locust/
+*.db
+__pycache__/
