@@ -19,6 +19,7 @@ from comum.db import BancoDados
 
 app = Flask(__name__)
 app.json.sort_keys = False
+app.json.ensure_ascii = False  # acentos legíveis no JSON
 metricas.instrumentar(app)   # 1o: métricas (medem o tamanho já comprimido)
 otimizacoes.ativar(app)      # 2o: gzip + Cache-Control
 
